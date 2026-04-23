@@ -1,9 +1,8 @@
-# ==============================
-# Azure Credentials
-# ==============================
-$tenantId = "<TENANT_ID>"
-$clientId = "<CLIENT_ID>"
-$clientSecret = "<CLIENT_SECRET>"
+param (
+    [string]$tenantId,
+    [string]$clientId,
+    [string]$clientSecret
+)
 
 # ==============================
 # Get Access Token
@@ -22,14 +21,26 @@ $tokenResponse = Invoke-RestMethod -Method Post `
 $accessToken = $tokenResponse.access_token
 
 # ==============================
-# Read CSV File
+# Read CSV
 # ==============================
-$users = Import-Csv -Path "users.csv"
+$csvPath = "$PSScriptRoot/users.csv"
+$users = Import-Csv -Path $csvPath
 
 # ==============================
-# Loop Through Users
+# Loop Users
 # ==============================
 foreach ($u in $users) {
+
+    # Check if user exists
+    $existingUser = Invoke-RestMethod -Method Get `
+        -Uri "https://graph.microsoft.com/v1.0/users/$($u.UserPrincipalName)" `
+        -Headers @{Authorization = "Bearer $accessToken"} `
+        -ErrorAction SilentlyContinue
+
+    if ($existingUser) {
+        Write-Host "⚠️ Already exists: $($u.UserPrincipalName)"
+        continue
+    }
 
     $user = @{
         accountEnabled = $true
@@ -49,7 +60,7 @@ foreach ($u in $users) {
             -Body ($user | ConvertTo-Json -Depth 10) `
             -ContentType "application/json"
 
-        Write-Host "✅ User created: $($u.UserPrincipalName)"
+        Write-Host "✅ Created: $($u.UserPrincipalName)"
     }
     catch {
         Write-Host "❌ Failed: $($u.UserPrincipalName)"
