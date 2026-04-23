@@ -1,1 +1,3 @@
-
+DisplayName,UserPrincipalName,MailNickname,Password
+John Doe,john@yourtenant.onmicrosoft.com,john,Password@123
+Jane Smith,jane@yourtenant.onmicrosoft.com,jane,Password@123
