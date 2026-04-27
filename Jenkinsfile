@@ -1,25 +1,25 @@
 pipeline {
     agent any
 
-    environment {
-        TENANT_ID = credentials('tenant-id')
-        CLIENT_ID = credentials('client-id')
-        CLIENT_SECRET = credentials('entra-secret')
-    }
-
     stages {
-
         stage('Run Script') {
             steps {
-                bat '''
-                powershell -ExecutionPolicy Bypass -File create-users.ps1 ^
-                -tenantId %TENANT_ID% ^
-                -clientId %CLIENT_ID% ^
-                -clientSecret %CLIENT_SECRET%
-                '''
+                withCredentials([
+                    string(credentialsId: 'tenant-id', variable: 'TENANT_ID'),
+                    string(credentialsId: 'client-id', variable: 'CLIENT_ID'),
+                    string(credentialsId: 'entra-secret', variable: 'CLIENT_SECRET')
+                ]) {
+                    bat """
+                    powershell -ExecutionPolicy Bypass -File create-users.ps1 ^
+                    -tenantId %TENANT_ID% ^
+                    -clientId %CLIENT_ID% ^
+                    -clientSecret %CLIENT_SECRET%
+                    """
+                }
             }
         }
     }
+}
 
     post {
         success {
