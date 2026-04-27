@@ -3,6 +3,9 @@ param (
     [string]$clientId,
     [string]$clientSecret
 )
+Write-Host "Tenant: $tenantId"
+Write-Host "Client: $clientId"
+Write-Host "Secret length: $($clientSecret.Length)"
 
 # ==============================
 # Get Access Token
@@ -19,6 +22,12 @@ $tokenResponse = Invoke-RestMethod -Method Post `
     -Body $body
 
 $accessToken = $tokenResponse.access_token
+
+if (-not $accessToken) {
+    Write-Host "❌ Token NOT generated"
+    Write-Host ($tokenResponse | ConvertTo-Json -Depth 5)
+    exit 1
+}
 
 # ==============================
 # Read CSV
