@@ -42,7 +42,7 @@ foreach ($u in $users) {
 
     # Check if user exists
     $existingUser = Invoke-RestMethod -Method Get `
-        -Uri "https://graph.microsoft.com/v1.0/users/$($u.UserPrincipalName)" `
+        -Uri "https://graph.microsoft.com/v1.0/users/$($user.UserPrincipalName)" `
         -Headers @{Authorization = "Bearer $accessToken"} `
         -ErrorAction SilentlyContinue
 
