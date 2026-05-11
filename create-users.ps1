@@ -3,13 +3,14 @@ param (
     [string]$clientId,
     [string]$clientSecret
 )
+
 Write-Host "Tenant: $tenantId"
 Write-Host "Client: $clientId"
 Write-Host "Secret length: $($clientSecret.Length)"
 
-# ==============================
-# Get Access Token
-# ==============================
+# ==========================================
+# Get Microsoft Graph Access Token
+# ==========================================
 $body = @{
     grant_type    = "client_credentials"
     scope         = "https://graph.microsoft.com/.default"
@@ -17,71 +18,109 @@ $body = @{
     client_secret = $clientSecret
 }
 
-$tokenResponse = Invoke-RestMethod -Method Post `
+$tokenResponse = Invoke-RestMethod `
+    -Method Post `
     -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
     -Body $body
 
 $accessToken = $tokenResponse.access_token
 
 if (-not $accessToken) {
-    Write-Host "❌ Token NOT generated"
-    Write-Host ($tokenResponse | ConvertTo-Json -Depth 5)
+    Write-Host "[ERROR] Token NOT generated"
     exit 1
 }
 
-# ==============================
+# ==========================================
+# Headers
+# ==========================================
+$headers = @{
+    Authorization = "Bearer $accessToken"
+    "Content-Type" = "application/json"
+}
+
+# ==========================================
 # Read CSV
-# ==============================
+# ==========================================
 $csvPath = "$PSScriptRoot/users.csv"
+
+if (-not (Test-Path $csvPath)) {
+    Write-Host "[ERROR] users.csv not found"
+    exit 1
+}
+
 $users = Import-Csv -Path $csvPath
 
-# ==============================
-# Loop Users
-# ==============================
+# ==========================================
+# Loop Through Users
+# ==========================================
 foreach ($u in $users) {
 
-    # Check if user exists
-    $existingUser = Invoke-RestMethod -Method Get `
-        -Uri "https://graph.microsoft.com/v1.0/users/$($user.UserPrincipalName)" `
-        -Headers @{Authorization = "Bearer $accessToken"} `
-        -ErrorAction SilentlyContinue
+    $userEmail = $u.UserPrincipalName
 
-    if ($existingUser) {
-        Write-Host "⚠️ Already exists: $($u.UserPrincipalName)"
-        continue
-    }
-
-    $user = @{
-        accountEnabled = $true
-        displayName    = $u.DisplayName
-        mailNickname   = $u.MailNickname
-        userPrincipalName = $u.UserPrincipalName
-        passwordProfile = @{
-            forceChangePasswordNextSignIn = $true
-            password = $u.Password
-        }
-    }
+    Write-Host "----------------------------------"
+    Write-Host "[INFO] Processing: $userEmail"
 
     try {
-        Invoke-RestMethod -Method Post `
-            -Uri "https://graph.microsoft.com/v1.0/users" `
-            -Headers @{Authorization = "Bearer $accessToken"} `
-            -Body ($user | ConvertTo-Json -Depth 10) `
-            -ContentType "application/json"
 
-        Write-Host "✅ Created: $($u.UserPrincipalName)"
+        # ==========================================
+        # Check if User Exists
+        # ==========================================
+        $existingUser = Invoke-RestMethod `
+            -Method Get `
+            -Uri "https://graph.microsoft.com/v1.0/users?`$filter=userPrincipalName eq '$userEmail'" `
+            -Headers $headers
+
+        if ($existingUser.value.Count -gt 0) {
+
+            Write-Host "[INFO] Already exists: $userEmail"
+            continue
+        }
+
+        # ==========================================
+        # Create User Body
+        # ==========================================
+        $newUser = @{
+            accountEnabled = $true
+            displayName = $u.DisplayName
+            mailNickname = $u.MailNickname
+            userPrincipalName = $u.UserPrincipalName
+
+            passwordProfile = @{
+                forceChangePasswordNextSignIn = $true
+                password = $u.Password
+            }
+        }
+
+        # ==========================================
+        # Create User
+        # ==========================================
+        Invoke-RestMethod `
+            -Method Post `
+            -Uri "https://graph.microsoft.com/v1.0/users" `
+            -Headers $headers `
+            -Body ($newUser | ConvertTo-Json -Depth 10)
+
+        Write-Host "[SUCCESS] User created: $userEmail"
     }
     catch {
-    Write-Host "❌ Failed: $($u.UserPrincipalName)"
-    Write-Host $_.Exception.Message
 
-    if ($_.Exception.Response) {
-        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-        $reader.BaseStream.Position = 0
-        $reader.DiscardBufferedData()
-        $responseBody = $reader.ReadToEnd()
-        Write-Host "Full Error:"
-        Write-Host $responseBody
+        Write-Host "[ERROR] Failed for: $userEmail"
+        Write-Host $_.Exception.Message
+
+        if ($_.Exception.Response) {
+
+            $reader = New-Object System.IO.StreamReader(
+                $_.Exception.Response.GetResponseStream()
+            )
+
+            $reader.BaseStream.Position = 0
+            $reader.DiscardBufferedData()
+
+            $responseBody = $reader.ReadToEnd()
+
+            Write-Host "========== GRAPH API ERROR =========="
+            Write-Host $responseBody
+            Write-Host "====================================="
+        }
     }
-}
 }
